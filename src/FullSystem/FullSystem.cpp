@@ -56,11 +56,17 @@
 
 #include <cmath>
 
-#include <opencv2/core/core.hpp> //include openCV
+//include openCV
+#include <opencv2/core/core.hpp>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
 #include <fstream>
+
+//include PCL
+#include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
+#include <pcl/registration/icp.h>
 
 using namespace cv;
 using namespace std;
@@ -280,6 +286,46 @@ void FullSystem::printResult(std::string file)
 Vec4 FullSystem::trackNewCoarse(FrameHessian* fh, cv::Mat &imDepth)
 {
 
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_in (new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud_out (new pcl::PointCloud<pcl::PointXYZ>);
+
+	// Fill in the CloudIn data
+	cloud_in->width    = 5;
+	cloud_in->height   = 1;
+	cloud_in->is_dense = false;
+	cloud_in->points.resize (cloud_in->width * cloud_in->height);
+	for (size_t i = 0; i < cloud_in->points.size (); ++i)
+	{
+	cloud_in->points[i].x = 1024 * rand () / (RAND_MAX + 1.0f);
+	cloud_in->points[i].y = 1024 * rand () / (RAND_MAX + 1.0f);
+	cloud_in->points[i].z = 1024 * rand () / (RAND_MAX + 1.0f);
+	}
+	std::cout << "Saved " << cloud_in->points.size () << " data points to input:"
+	  << std::endl;
+	for (size_t i = 0; i < cloud_in->points.size (); ++i) std::cout << "    " <<
+	  cloud_in->points[i].x << " " << cloud_in->points[i].y << " " <<
+	  cloud_in->points[i].z << std::endl;
+	*cloud_out = *cloud_in;
+	std::cout << "size:" << cloud_out->points.size() << std::endl;
+
+	for (size_t i = 0; i < cloud_in->points.size (); ++i)
+	cloud_out->points[i].x = cloud_in->points[i].x + 0.7f;
+	std::cout << "Transformed " << cloud_in->points.size () << " data points:"
+	  << std::endl;
+	for (size_t i = 0; i < cloud_out->points.size (); ++i)
+	std::cout << "    " << cloud_out->points[i].x << " " <<
+	  cloud_out->points[i].y << " " << cloud_out->points[i].z << std::endl;
+
+	pcl::IterativeClosestPoint<pcl::PointXYZ, pcl::PointXYZ> icp;
+	icp.setInputSource(cloud_in);
+	icp.setInputTarget(cloud_out);
+
+	pcl::PointCloud<pcl::PointXYZ> Final;
+	icp.align(Final);
+	std::cout << "has converged:" << icp.hasConverged() << " score: " <<
+	icp.getFitnessScore() << std::endl;
+	std::cout << icp.getFinalTransformation() << std::endl;
+
 	assert(allFrameHistory.size() > 0);
 	// set pose initialization.
 
@@ -415,7 +461,7 @@ Vec4 FullSystem::trackNewCoarse(FrameHessian* fh, cv::Mat &imDepth)
 	{
 		AffLight aff_g2l_this = aff_last_2_l;
 		SE3 lastF_2_fh_this = lastF_2_fh_tries[i];
-		bool trackingIsGood = coarseTracker->trackNewestCoarse(
+		bool trackingIsGood = coarseTracker->trackNewestCoarse( // OPTIMIZE TRACKING (CalcRes, calcGSSSE,)
 				fh, lastF_2_fh_this, aff_g2l_this,
 				pyrLevelsUsed-1,
 				achievedRes);	// in each level has to be at least as good as the last try.
